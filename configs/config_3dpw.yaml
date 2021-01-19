@@ -3,7 +3,7 @@ DEBUG_FREQ: 5
 LOGDIR: ''
 DEVICE: 'cuda'
 EXP_NAME: 'vibe'
-OUTPUT_DIR: 'results/vibe_wo_3dpw'
+OUTPUT_DIR: 'results/vibe_tests'
 NUM_WORKERS: 8
 SEED_VALUE: -1
 DATASET:
@@ -29,7 +29,7 @@ TRAIN:
 #    - 'PoseTrack'
 #    - 'PennAction'
   DATASETS_3D:
-#    - 'ThreeDPW'
+    - 'ThreeDPW'
     - 'MPII3D'
   DATASET_EVAL: 'ThreeDPW'
   GEN_LR: 0.00005

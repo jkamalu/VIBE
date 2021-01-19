@@ -60,9 +60,6 @@ def main(args):
         os.path.join(image_folder, img) for img in os.listdir(image_folder) if img.endswith('.jpg')
     ])
     
-    output_path = os.path.join("/cvgl/u/jkamalu/VIBE/output", args.jrdb_coco, args.scene)
-    os.makedirs(output_path, exist_ok=True)
-    
     orig_height, orig_width = cv2.imread(image_file_names[0]).shape[:2]
     
     total_time = time.time()
@@ -108,7 +105,16 @@ def main(args):
     ).to(device)
 
     # ========= Load pretrained weights ========= #
-    pretrained_file = download_ckpt(use_3dpw=False)
+    if args.ckpt is not None:
+        pretrained_file = args.ckpt
+        ckpt_name = pretrained_file.split('/')[-2]
+    else:
+        pretrained_file = download_ckpt(use_3dpw=False)
+        ckpt_name = 'download'
+
+    output_path = os.path.join("/cvgl/u/jkamalu/VIBE/output", args.jrdb_coco, args.scene, ckpt_name)
+    os.makedirs(output_path, exist_ok=True)
+
     ckpt = torch.load(pretrained_file)
     print(f'Performance of pretrained model on 3DPW: {ckpt["performance"]}')
     ckpt = ckpt['gen_state_dict']
@@ -287,6 +293,7 @@ if __name__ == '__main__':
     parser.add_argument('--jrdb_coco', type=str, required=True)
     parser.add_argument('--scene', type=str, required=True)
     parser.add_argument('--min_num_frames', type=int, default=0)
+    parser.add_argument('--ckpt', type=str, default=None)
     
 
     # ========= Original arguments with nonzero usefulness (jkamalu) ========= #
