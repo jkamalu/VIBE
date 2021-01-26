@@ -12,15 +12,28 @@
 
 OPTIND=1
 
+BBOX=false
+BASE=false
+
 while [ "$1" != "" ]; do
     case $1 in
         --mode )
             shift
             MODE=$1
         ;;
-        --ckp )
+        --ckpt )
             shift
             CKPT=$1
+        ;;
+        --seed )
+	    shift
+	    SEED=$1
+	;;
+        --bbox )
+            BBOX=true
+        ;;
+        --base )
+            BASE=true
         ;;
         * )
             exit
@@ -32,15 +45,47 @@ if [ -z $MODE ]; then
     echo "--mode [train|eval] is required"
     exit
 fi
-MODE="${MODE}.py"
 
-if [ -z $CKPT ]; then
-    echo "--ckpt is required (currently unused)"
-    exit
+ARGS="--cfg configs/config_default.yaml"
+
+if [ $MODE == "train" ]; then
+    if [ -z $SEED ]; then
+        echo "--seed [0-9]+ is required for --mode train"
+        exit
+    else
+	ARGS="${ARGS} --seed ${SEED}"
+    fi
+else
+    if [ $MODE == "eval" ]; then
+        if [ -z $CKPT ]; then
+            echo "--ckpt is required for --mode eval" 
+            exit
+        fi
+    else
+        echo "--mode [train|eval] is required"
+        exit
+    fi
 fi
 
-# sample process (list hostnames of the nodes you've requested)
-srun --nodes=${SLURM_NNODES} bash -c "source /cvgl/u/jkamalu/miniconda3/bin/activate && conda activate vibe-env && cd /cvgl/u/jkamalu/VIBE && python ${MODE} --cfg configs/config.yaml"
+if [ $BASE == true ]; then
+    ARGS="${ARGS} --base"
+fi
+
+if [ $BBOX == true ]; then
+    ARGS="${ARGS} --bbox"
+fi
+
+if [ -v CKPT ]; then
+    ARGS="${ARGS} --ckpt ${CKPT}"
+fi
+
+MODE="${MODE}.py"
+
+COMMAND="python ${MODE} ${ARGS}"
+
+echo "Running with \"${COMMAND}\""
+
+srun --nodes=${SLURM_NNODES} bash -c "source /cvgl2/u/jkamalu/miniconda3/bin/activate && conda activate vibe-env && cd /cvgl2/u/jkamalu/VIBE && ${COMMAND}"
 
 # done
 echo "Done"

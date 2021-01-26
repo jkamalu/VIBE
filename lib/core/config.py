@@ -121,6 +121,13 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--cfg', type=str, help='cfg file path')
 
+    ### BEGIN jkamalu additions
+    parser.add_argument('--seed', type=int, default=None)
+    parser.add_argument('--ckpt', type=str, default=None)
+    parser.add_argument('--base', default=False, action='store_true')
+    parser.add_argument('--bbox', default=False, action='store_true')
+    ### END jkamalu additions
+
     args = parser.parse_args()
     print(args, end='\n\n')
 
@@ -129,5 +136,19 @@ def parse_args():
         cfg = update_cfg(args.cfg)
     else:
         cfg = get_cfg_defaults()
+
+    ### BEGIN jkamalu additions
+    if args.seed is not None:
+        cfg.SEED_VALUE = args.seed
+    if args.ckpt is not None:
+        cfg.TRAIN.PRETRAINED = args.ckpt
+    if args.base:
+        cfg.LOSS.D_MOTION_LOSS_W = 0.0
+    if args.bbox:
+        cfg.LOSS.BBOX_LOSS_W = 1.0
+    else:
+        cfg.LOSS.BBOX_LOSS_W = 0.0
+    cfg.EXP_NAME = f"seed={args.seed}_pretrained={str(args.ckpt is not None)[0]}_base={str(args.base)[0]}_bbox={str(args.bbox)[0]}"
+    ### END jkamalu additions
 
     return cfg, cfg_file

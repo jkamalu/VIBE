@@ -65,6 +65,7 @@ def main(cfg):
         e_3d_loss_weight=cfg.LOSS.KP_3D_W,
         e_pose_loss_weight=cfg.LOSS.POSE_W,
         e_shape_loss_weight=cfg.LOSS.SHAPE_W,
+        e_bbox_loss_weight=cfg.LOSS.BBOX_LOSS_W,
         d_motion_loss_weight=cfg.LOSS.D_MOTION_LOSS_W,
     )
 

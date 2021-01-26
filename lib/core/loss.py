@@ -26,6 +26,7 @@ class VIBELoss(nn.Module):
             e_3d_loss_weight=30.,
             e_pose_loss_weight=1.,
             e_shape_loss_weight=0.001,
+            e_bbox_loss_weight=0.0,
             d_motion_loss_weight=1.,
             device='cuda',
     ):
@@ -34,6 +35,7 @@ class VIBELoss(nn.Module):
         self.e_3d_loss_weight = e_3d_loss_weight
         self.e_pose_loss_weight = e_pose_loss_weight
         self.e_shape_loss_weight = e_shape_loss_weight
+        self.e_bbox_loss_weight = e_bbox_loss_weight
         self.d_motion_loss_weight = d_motion_loss_weight
 
         self.device = device
@@ -97,11 +99,17 @@ class VIBELoss(nn.Module):
         data_3d_theta = data_3d_theta[w_smpl]
         real_3d = real_3d[w_3d]
 
+        pred_bbox = batch_bbox_from_keypoints(pred_j2d)
+        real_bbox = batch_bbox_from_keypoints(real_2d)
+
         # <======== Generator Loss
         loss_kp_2d =  self.keypoint_loss(pred_j2d, real_2d, openpose_weight=1., gt_weight=1.) * self.e_loss_weight
 
         loss_kp_3d = self.keypoint_3d_loss(pred_j3d, real_3d)
         loss_kp_3d = loss_kp_3d * self.e_3d_loss_weight
+
+        _, loss_bbox_full_sup = self.bbox_losses(pred_bbox, real_bbox)
+        loss_bbox_giou = loss_bbox_giou * self.e_bbox_loss_weight
 
         real_shape, pred_shape = data_3d_theta[:, 75:], pred_theta[:, 75:]
         real_pose, pred_pose = data_3d_theta[:, 3:75], pred_theta[:, 3:75]
@@ -109,6 +117,7 @@ class VIBELoss(nn.Module):
         loss_dict = {
             'loss_kp_2d': loss_kp_2d,
             'loss_kp_3d': loss_kp_3d,
+            'loss_bbox_giou': loss_bbox_giou
         }
         if pred_theta.shape[0] > 0:
             loss_pose, loss_shape = self.smpl_losses(pred_pose, pred_shape, real_pose, real_shape)
@@ -194,6 +203,72 @@ class VIBELoss(nn.Module):
             loss_regr_pose = torch.FloatTensor(1).fill_(0.).to(self.device)
             loss_regr_betas = torch.FloatTensor(1).fill_(0.).to(self.device)
         return loss_regr_pose, loss_regr_betas
+
+    def bbox_losses(self, bbox_pred, bbox_real):
+        """Implement GIoU according to https://giou.stanford.edu/GIoU.pdf.
+
+        Arguments:
+        bbox_pred -- tensor of predicted bboxes given by opposing corners (B, 4)
+        bbox_real -- tensor of ground truth bboxes given by opposing corners (B, 4)
+        """
+
+        assert len(bbox_pred.shape) == 2 and \
+               len(bbox_real.shape) == 2 and \
+               bbox_pred.shape == bbox_real.shape
+
+        x1_real, y1_real, x2_real, y2_real = torch.split(bbox_real, 1, dim=1)
+
+        x1_pred = torch.min(bbox_pred[:, [0, 2]], dim=1).values.unsqueeze(1)
+        y1_pred = torch.min(bbox_pred[:, [1, 3]], dim=1).values.unsqueeze(1)
+        x2_pred = torch.max(bbox_pred[:, [0, 2]], dim=1).values.unsqueeze(1)
+        y2_pred = torch.max(bbox_pred[:, [1, 3]], dim=1).values.unsqueeze(1)
+
+        x1_crop = torch.min(x1_pred, x1_real)
+        y1_crop = torch.min(y1_pred, y1_real)
+        x2_crop = torch.max(x2_pred, x2_real)
+        y2_crop = torch.max(y2_pred, y2_real)
+
+        A_real = (x2_real - x1_real) * (y2_real - y1_real)
+        A_pred = (x2_pred - x1_pred) * (y2_pred - y1_pred)
+        A_crop = (x2_crop - x1_crop) * (y2_crop - y1_crop)
+
+        x1_int = torch.max(x1_pred, x1_real)
+        y1_int = torch.max(y1_pred, y1_real)
+        x2_int = torch.min(x2_pred, x2_real)
+        y2_int = torch.min(y2_pred, y2_real)
+
+        mask = (x2_int > x1_int).float() * (y2_int > y1_int).float()
+
+        intersection = (x2_int - x1_int) * (y2_int - y1_int) * mask
+        union = A_real + A_pred - intersection
+
+        iou = torch.mean(intersection / union)
+        iou_general = torch.mean(iou - (A_crop - union) / A_crop)
+
+        return 1 - iou, 1 - iou_general
+
+
+def batch_bbox_from_keypoints(keypoints):
+    """Extract a bbox from 2D keypoints.
+
+    Arguments:
+    keypoints -- tensor of 2D joint information (B, J, D)
+    """
+    if keypoints.shape[-1] == 3:
+        idx = torch.where(keypoints[:, :, -1] == 0)
+        keypoints[idx] = 0
+        mean = torch.mean(keypoints, dim=1) * keypoints.shape[1] / torch.sum(keypoints[:, :, -1] > 0, dim=1).unsqueeze(-1)
+        keypoints[idx] = mean[idx[:-1]]
+
+    x_min = torch.min(keypoints[:, :, 0], dim=1).values.unsqueeze(1)
+    y_min = torch.min(keypoints[:, :, 1], dim=1).values.unsqueeze(1)
+    x_max = torch.max(keypoints[:, :, 0], dim=1).values.unsqueeze(1)
+    y_max = torch.max(keypoints[:, :, 1], dim=1).values.unsqueeze(1)
+
+    if keypoints.shape[-1] == 3:
+        keypoints[idx] = 0
+
+    return torch.cat([x_min, y_min, x_max, y_max], dim=1)
 
 
 def batch_encoder_disc_l2_loss(disc_value):
